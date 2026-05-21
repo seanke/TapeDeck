@@ -1,0 +1,88 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "tapedeck: build",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "src/TapeDeck/TapeDeck.csproj"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "tapedeck: test",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "test",
+        "tests/TapeDeck.Tests/TapeDeck.Tests.csproj"
+      ],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "tapedeck: devices",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "src/TapeDeck",
+        "--",
+        "devices"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "tapedeck: record",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "src/TapeDeck",
+        "--",
+        "record"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "tapedeck: publish win-x64 single-file",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "publish",
+        "src/TapeDeck/TapeDeck.csproj",
+        "-c",
+        "Release",
+        "-r",
+        "win-x64",
+        "--self-contained",
+        "true",
+        "-p:PublishSingleFile=true"
+      ],
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}
