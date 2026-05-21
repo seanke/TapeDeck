@@ -28,7 +28,7 @@ public sealed class DualSourceRecorder
     /// <summary>
     /// Runs one dual-source recording session.
     /// </summary>
-    public async Task<TapeDeckExitCode> RecordAsync(RecordingOptions options, CancellationToken cancellationToken)
+    public async Task<RecordingResult> RecordAsync(RecordingOptions options, CancellationToken cancellationToken)
     {
         var fileSet = FileNameService.CreateFileSet(options, DateTimeOffset.Now);
         var recorders = new List<SourceRecorder>();
@@ -156,15 +156,16 @@ public sealed class DualSourceRecorder
 
             error.WriteLine($"Recording failed unexpectedly: {runException.Message}");
             PrintStemPaths(recorders);
-            return TapeDeckExitCode.RecordingFailed;
+            return new RecordingResult(TapeDeckExitCode.RecordingFailed, [], stopElapsed, runException.Message);
         }
 
         var failedRecorder = recorders.FirstOrDefault(recorder => recorder.Failure is not null);
         if (failedRecorder is not null)
         {
-            error.WriteLine($"Recording failed unexpectedly from source '{failedRecorder.DisplayName}': {failedRecorder.Failure!.Message}");
+            var message = $"Recording failed unexpectedly from source '{failedRecorder.DisplayName}': {failedRecorder.Failure!.Message}";
+            error.WriteLine(message);
             PrintStemPaths(recorders);
-            return TapeDeckExitCode.RecordingFailed;
+            return new RecordingResult(TapeDeckExitCode.RecordingFailed, [], stopElapsed, message);
         }
 
         output.WriteLine(options.Format == OutputFormat.Wav ? "Mixing final WAV..." : "Mixing final M4A...");
@@ -186,13 +187,13 @@ public sealed class DualSourceRecorder
         {
             error.WriteLine(ex.Message);
             PrintStemPaths(recorders);
-            return TapeDeckExitCode.FileOutputError;
+            return new RecordingResult(TapeDeckExitCode.FileOutputError, [], stopElapsed, ex.Message);
         }
         catch (Exception ex)
         {
             error.WriteLine($"Final mixing failed: {ex.Message}");
             PrintStemPaths(recorders);
-            return TapeDeckExitCode.FinalMixFailed;
+            return new RecordingResult(TapeDeckExitCode.FinalMixFailed, [], stopElapsed, ex.Message);
         }
 
         if (!options.KeepStems)
@@ -214,7 +215,7 @@ public sealed class DualSourceRecorder
             output.WriteLine("Warning: recording stopped at the safe WAV size limit.");
         }
 
-        return TapeDeckExitCode.Success;
+        return new RecordingResult(TapeDeckExitCode.Success, results, stopElapsed);
     }
 
     private void PrintStart(RecordingOptions options, string finalPath, SourceRecorder? systemRecorder, SourceRecorder? microphoneRecorder)

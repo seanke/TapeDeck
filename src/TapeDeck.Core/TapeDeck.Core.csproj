@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>TapeDeck</RootNamespace>
+    <UseWindowsTargeting>true</UseWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="TapeDeck.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.3.0" />
+  </ItemGroup>
+</Project>

@@ -90,7 +90,8 @@ public static class Program
             try
             {
                 var recorder = new DualSourceRecorder(new DeviceLister(), new MixdownService(), Console.Out, Console.Error);
-                return await recorder.RecordAsync(options, cancellationTokenSource.Token).ConfigureAwait(false);
+                var result = await recorder.RecordAsync(options, cancellationTokenSource.Token).ConfigureAwait(false);
+                return result.ExitCode;
             }
             finally
             {

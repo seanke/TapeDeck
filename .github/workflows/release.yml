@@ -1,0 +1,132 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore GitVersion tool
+        run: dotnet tool restore
+
+      - name: Compute version
+        id: version
+        shell: pwsh
+        run: |
+          $versionInfo = dotnet gitversion /output json | ConvertFrom-Json
+          "semVer=$($versionInfo.SemVer)" >> $env:GITHUB_OUTPUT
+          "fullSemVer=$($versionInfo.FullSemVer)" >> $env:GITHUB_OUTPUT
+          "assemblySemVer=$($versionInfo.AssemblySemVer)" >> $env:GITHUB_OUTPUT
+          "assemblySemFileVer=$($versionInfo.AssemblySemFileVer)" >> $env:GITHUB_OUTPUT
+          "informationalVersion=$($versionInfo.InformationalVersion)" >> $env:GITHUB_OUTPUT
+          "Computed version: $($versionInfo.SemVer)"
+
+      - name: Restore
+        run: dotnet restore TapeDeck.sln
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $versionProps = @(
+            "-p:Version=${{ steps.version.outputs.semVer }}",
+            "-p:AssemblyVersion=${{ steps.version.outputs.assemblySemVer }}",
+            "-p:FileVersion=${{ steps.version.outputs.assemblySemFileVer }}",
+            "-p:InformationalVersion=${{ steps.version.outputs.informationalVersion }}",
+            "-p:ContinuousIntegrationBuild=true",
+            "-p:DebugType=None",
+            "-p:DebugSymbols=false"
+          )
+          dotnet build TapeDeck.sln --configuration Release --no-restore @versionProps
+
+      - name: Test
+        run: dotnet test tests/TapeDeck.Tests/TapeDeck.Tests.csproj --configuration Release --no-build
+
+      - name: Publish CLI
+        shell: pwsh
+        run: |
+          $versionProps = @(
+            "-p:Version=${{ steps.version.outputs.semVer }}",
+            "-p:AssemblyVersion=${{ steps.version.outputs.assemblySemVer }}",
+            "-p:FileVersion=${{ steps.version.outputs.assemblySemFileVer }}",
+            "-p:InformationalVersion=${{ steps.version.outputs.informationalVersion }}",
+            "-p:ContinuousIntegrationBuild=true",
+            "-p:DebugType=None",
+            "-p:DebugSymbols=false"
+          )
+          dotnet publish src/TapeDeck.Cli/TapeDeck.Cli.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:EnableCompressionInSingleFile=true `
+            -o artifacts/TapeDeck.Cli-win-x64 `
+            @versionProps
+
+      - name: Publish app
+        shell: pwsh
+        run: |
+          $versionProps = @(
+            "-p:Version=${{ steps.version.outputs.semVer }}",
+            "-p:AssemblyVersion=${{ steps.version.outputs.assemblySemVer }}",
+            "-p:FileVersion=${{ steps.version.outputs.assemblySemFileVer }}",
+            "-p:InformationalVersion=${{ steps.version.outputs.informationalVersion }}",
+            "-p:ContinuousIntegrationBuild=true"
+          )
+          dotnet publish src/TapeDeck.App/TapeDeck.App.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:EnableCompressionInSingleFile=true `
+            -o artifacts/TapeDeck.App-win-x64 `
+            @versionProps
+
+      - name: Package release assets
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.semVer }}'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path artifacts/TapeDeck.Cli-win-x64/* -DestinationPath "dist/TapeDeck.Cli-win-x64-v$version.zip" -Force
+          Compress-Archive -Path artifacts/TapeDeck.App-win-x64/* -DestinationPath "dist/TapeDeck.App-win-x64-v$version.zip" -Force
+
+      - name: Create GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ steps.version.outputs.semVer }}'
+          $tag = "v$version"
+          if (gh release view $tag *> $null) {
+            Write-Host "Release $tag already exists; skipping release creation."
+            exit 0
+          }
+
+          gh release create $tag `
+            "dist/TapeDeck.Cli-win-x64-v$version.zip" `
+            "dist/TapeDeck.App-win-x64-v$version.zip" `
+            --target "$env:GITHUB_SHA" `
+            --title "TapeDeck $tag" `
+            --generate-notes `
+            --fail-on-no-commits

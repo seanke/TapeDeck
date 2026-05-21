@@ -5,15 +5,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>TapeDeck</AssemblyName>
-    <RootNamespace>TapeDeck</RootNamespace>
+    <RootNamespace>TapeDeck.Cli</RootNamespace>
     <UseWindowsTargeting>true</UseWindowsTargeting>
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="TapeDeck.Tests" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="NAudio" Version="2.3.0" />
+    <ProjectReference Include="..\TapeDeck.Core\TapeDeck.Core.csproj" />
   </ItemGroup>
 </Project>
