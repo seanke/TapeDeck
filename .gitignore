@@ -7,3 +7,6 @@ tests/**/obj/
 .vs/
 *.user
 *.suo
+artifacts/
+dist/
+.artifacts/

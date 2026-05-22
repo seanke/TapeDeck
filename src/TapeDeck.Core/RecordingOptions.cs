@@ -112,7 +112,7 @@ public enum TapeDeckExitCode
 /// <summary>
 /// Parses TapeDeck command-line arguments without pulling in a CLI framework.
 /// </summary>
-internal static class CommandLineParser
+public static class CommandLineParser
 {
     /// <summary>
     /// Attempts to parse the record command options.
@@ -404,7 +404,7 @@ internal static class CommandLineParser
 /// <summary>
 /// Coordinates repeated stop requests so cleanup is started only once.
 /// </summary>
-internal sealed class StopRequestGate
+public sealed class StopRequestGate
 {
     private int requested;
 

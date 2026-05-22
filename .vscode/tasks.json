@@ -7,7 +7,7 @@
       "command": "dotnet",
       "args": [
         "build",
-        "src/TapeDeck/TapeDeck.csproj"
+        "TapeDeck.sln"
       ],
       "group": {
         "kind": "build",
@@ -36,7 +36,7 @@
       "args": [
         "run",
         "--project",
-        "src/TapeDeck",
+        "src/TapeDeck.Cli",
         "--",
         "devices"
       ],
@@ -54,7 +54,7 @@
       "args": [
         "run",
         "--project",
-        "src/TapeDeck",
+        "src/TapeDeck.Cli",
         "--",
         "record"
       ],
@@ -67,12 +67,47 @@
       "problemMatcher": []
     },
     {
-      "label": "tapedeck: publish win-x64 single-file",
+      "label": "tapedeck: app",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "src/TapeDeck.App"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "focus": true,
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "tapedeck: publish cli win-x64 single-file",
       "type": "shell",
       "command": "dotnet",
       "args": [
         "publish",
-        "src/TapeDeck/TapeDeck.csproj",
+        "src/TapeDeck.Cli/TapeDeck.Cli.csproj",
+        "-c",
+        "Release",
+        "-r",
+        "win-x64",
+        "--self-contained",
+        "true",
+        "-p:PublishSingleFile=true"
+      ],
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "tapedeck: publish app win-x64 single-file",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "publish",
+        "src/TapeDeck.App/TapeDeck.App.csproj",
         "-c",
         "Release",
         "-r",
