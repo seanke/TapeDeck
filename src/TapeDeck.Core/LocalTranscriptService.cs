@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Speech.Recognition;
 using System.Text;
+using NAudio.Wave;
 
 namespace TapeDeck;
 
@@ -15,13 +16,16 @@ public sealed class LocalTranscriptService
     /// </summary>
     public TranscriptRequirementsResult CheckRequirements(string? cultureName)
     {
+        string? probePath = null;
         try
         {
             var recognizerInfo = ResolveRecognizer(cultureName);
+            probePath = CreateRequirementsProbeWaveFile();
             using var recognizer = new SpeechRecognitionEngine(recognizerInfo);
             var grammar = new DictationGrammar();
             recognizer.LoadGrammar(grammar);
-            recognizer.SetInputToNull();
+            recognizer.SetInputToWaveFile(probePath);
+            _ = recognizer.Recognize();
 
             return TranscriptRequirementsResult.Available(
                 recognizerInfo.Culture.Name,
@@ -35,9 +39,13 @@ public sealed class LocalTranscriptService
         {
             return TranscriptRequirementsResult.Unavailable($"Invalid transcript culture '{cultureName}': {ex.Message}");
         }
-        catch (Exception ex) when (ex is InvalidOperationException or PlatformNotSupportedException or COMException or UnauthorizedAccessException or NotSupportedException)
+        catch (Exception ex) when (ex is InvalidOperationException or PlatformNotSupportedException or COMException or UnauthorizedAccessException or NotSupportedException or IOException or ArgumentException)
         {
             return TranscriptRequirementsResult.Unavailable("Local transcription could not be opened. Windows speech recognition is not available for the selected language.");
+        }
+        finally
+        {
+            DeleteProbeWaveFile(probePath);
         }
     }
 
@@ -149,6 +157,39 @@ public sealed class LocalTranscriptService
         }
 
         return recognizers[0];
+    }
+
+    private static string CreateRequirementsProbeWaveFile()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "TapeDeck");
+        Directory.CreateDirectory(directory);
+
+        var path = Path.Combine(directory, $"transcript-probe-{Guid.NewGuid():N}.wav");
+        var format = new WaveFormat(16_000, 16, 1);
+        var silence = new byte[format.AverageBytesPerSecond / 4];
+        using var writer = new WaveFileWriter(path, format);
+        writer.Write(silence, 0, silence.Length);
+        return path;
+    }
+
+    private static void DeleteProbeWaveFile(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // A leftover temp probe is harmless and should not hide the actual requirement result.
+        }
     }
 }
 
