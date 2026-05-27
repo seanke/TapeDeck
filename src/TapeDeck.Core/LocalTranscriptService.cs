@@ -1,8 +1,9 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Speech.AudioFormat;
 using System.Speech.Recognition;
+using System.Speech.Synthesis;
 using System.Text;
-using NAudio.Wave;
 
 namespace TapeDeck;
 
@@ -25,7 +26,11 @@ public sealed class LocalTranscriptService
             var grammar = new DictationGrammar();
             recognizer.LoadGrammar(grammar);
             recognizer.SetInputToWaveFile(probePath);
-            _ = recognizer.Recognize();
+            var result = recognizer.Recognize(TimeSpan.FromSeconds(10));
+            if (string.IsNullOrWhiteSpace(result?.Text))
+            {
+                return TranscriptRequirementsResult.Unavailable("Local transcription self-test did not recognize speech from a test WAV.");
+            }
 
             return TranscriptRequirementsResult.Available(
                 recognizerInfo.Culture.Name,
@@ -41,7 +46,7 @@ public sealed class LocalTranscriptService
         }
         catch (Exception ex) when (ex is InvalidOperationException or PlatformNotSupportedException or COMException or UnauthorizedAccessException or NotSupportedException or IOException or ArgumentException)
         {
-            return TranscriptRequirementsResult.Unavailable("Local transcription could not be opened. Windows speech recognition is not available for the selected language.");
+            return TranscriptRequirementsResult.Unavailable("Local transcription self-test failed. Windows speech recognition is not available for the selected language.");
         }
         finally
         {
@@ -165,10 +170,11 @@ public sealed class LocalTranscriptService
         Directory.CreateDirectory(directory);
 
         var path = Path.Combine(directory, $"transcript-probe-{Guid.NewGuid():N}.wav");
-        var format = new WaveFormat(16_000, 16, 1);
-        var silence = new byte[format.AverageBytesPerSecond / 4];
-        using var writer = new WaveFileWriter(path, format);
-        writer.Write(silence, 0, silence.Length);
+        using var synthesizer = new SpeechSynthesizer();
+        var format = new SpeechAudioFormatInfo(16_000, AudioBitsPerSample.Sixteen, AudioChannel.Mono);
+        synthesizer.SetOutputToWaveFile(path, format);
+        synthesizer.Speak("Tape deck speech recognition test.");
+        synthesizer.SetOutputToNull();
         return path;
     }
 
