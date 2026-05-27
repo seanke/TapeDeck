@@ -12,6 +12,7 @@ public sealed class MainForm : Form
     private readonly NumericUpDown bitrateInput = new();
     private readonly CheckBox systemAudioCheckBox = new();
     private readonly CheckBox microphoneCheckBox = new();
+    private readonly CheckBox transcriptCheckBox = new();
     private readonly Button recordButton = new();
     private readonly Button stopButton = new();
     private readonly Label statusLabel = new();
@@ -32,7 +33,7 @@ public sealed class MainForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = true;
-        ClientSize = new Size(360, 230);
+        ClientSize = new Size(380, 255);
 
         BuildLayout();
         WireEvents();
@@ -47,7 +48,7 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(14),
             ColumnCount = 2,
-            RowCount = 7
+            RowCount = 8
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -88,6 +89,11 @@ public sealed class MainForm : Form
         microphoneCheckBox.AutoSize = true;
         microphoneCheckBox.Anchor = AnchorStyles.Left;
 
+        transcriptCheckBox.Text = "Transcript";
+        transcriptCheckBox.Checked = false;
+        transcriptCheckBox.AutoSize = true;
+        transcriptCheckBox.Anchor = AnchorStyles.Left;
+
         recordButton.Text = "Record";
         recordButton.Dock = DockStyle.Fill;
         recordButton.Height = 34;
@@ -110,11 +116,12 @@ public sealed class MainForm : Form
         root.Controls.Add(bitrateInput, 1, 1);
         root.Controls.Add(systemAudioCheckBox, 1, 2);
         root.Controls.Add(microphoneCheckBox, 1, 3);
-        root.Controls.Add(recordButton, 0, 4);
-        root.Controls.Add(stopButton, 1, 4);
-        root.Controls.Add(new Label { AutoSize = true, Text = "Elapsed", Anchor = AnchorStyles.Left }, 0, 5);
-        root.Controls.Add(elapsedLabel, 1, 5);
-        root.Controls.Add(statusLabel, 0, 6);
+        root.Controls.Add(transcriptCheckBox, 1, 4);
+        root.Controls.Add(recordButton, 0, 5);
+        root.Controls.Add(stopButton, 1, 5);
+        root.Controls.Add(new Label { AutoSize = true, Text = "Elapsed", Anchor = AnchorStyles.Left }, 0, 6);
+        root.Controls.Add(elapsedLabel, 1, 6);
+        root.Controls.Add(statusLabel, 0, 7);
         root.SetColumnSpan(statusLabel, 2);
 
         Controls.Add(root);
@@ -152,7 +159,8 @@ public sealed class MainForm : Form
             AudioBitrate = (int)bitrateInput.Value,
             RecordSystem = systemAudioCheckBox.Checked,
             RecordMicrophone = microphoneCheckBox.Checked,
-            Overwrite = true
+            Overwrite = true,
+            Transcribe = transcriptCheckBox.Checked
         };
 
         recordingCancellation = new CancellationTokenSource();
@@ -178,14 +186,27 @@ public sealed class MainForm : Form
 
             if (!result.Succeeded)
             {
-                statusLabel.Text = result.ErrorMessage ?? $"Recording failed: {result.ExitCode}";
+                if (result.Outputs.Count > 0)
+                {
+                    var saved = PromptAndMoveOutput(result.Outputs[0].Path, options.Format, result.Transcript?.Path);
+                    statusLabel.Text = saved.AudioPath is null
+                        ? $"Transcript failed. Audio kept at {result.Outputs[0].Path}"
+                        : $"Saved audio. Transcript failed: {result.ErrorMessage}";
+                }
+                else
+                {
+                    statusLabel.Text = result.ErrorMessage ?? $"Recording failed: {result.ExitCode}";
+                }
+
                 return;
             }
 
-            var savedPath = PromptAndMoveOutput(result.Outputs[0].Path, options.Format);
-            statusLabel.Text = savedPath is null
+            var savedPath = PromptAndMoveOutput(result.Outputs[0].Path, options.Format, result.Transcript?.Path);
+            statusLabel.Text = savedPath.AudioPath is null
                 ? $"Save canceled. Kept at {result.Outputs[0].Path}"
-                : $"Saved {savedPath}";
+                : savedPath.TranscriptPath is null
+                    ? $"Saved {savedPath.AudioPath}"
+                    : $"Saved {savedPath.AudioPath} and transcript";
         }
         catch (AudioDeviceException ex)
         {
@@ -220,7 +241,7 @@ public sealed class MainForm : Form
         recordingCancellation.Cancel();
     }
 
-    private string? PromptAndMoveOutput(string temporaryPath, OutputFormat format)
+    private SavedRecordingPath PromptAndMoveOutput(string temporaryPath, OutputFormat format, string? transcriptPath)
     {
         using var dialog = new SaveFileDialog
         {
@@ -237,12 +258,19 @@ public sealed class MainForm : Form
 
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
-            return null;
+            return new SavedRecordingPath(null, null);
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(dialog.FileName)!);
         File.Move(temporaryPath, dialog.FileName, true);
-        return dialog.FileName;
+        string? movedTranscriptPath = null;
+        if (!string.IsNullOrWhiteSpace(transcriptPath) && File.Exists(transcriptPath))
+        {
+            movedTranscriptPath = Path.ChangeExtension(dialog.FileName, ".txt");
+            File.Move(transcriptPath, movedTranscriptPath, true);
+        }
+
+        return new SavedRecordingPath(dialog.FileName, movedTranscriptPath);
     }
 
     private void UpdateFormatControls()
@@ -258,6 +286,7 @@ public sealed class MainForm : Form
         bitrateInput.Enabled = !recording && SelectedFormat == OutputFormat.M4A;
         systemAudioCheckBox.Enabled = !recording;
         microphoneCheckBox.Enabled = !recording;
+        transcriptCheckBox.Enabled = !recording;
     }
 
     private OutputFormat SelectedFormat
@@ -312,4 +341,6 @@ public sealed class MainForm : Form
             return Label;
         }
     }
+
+    private sealed record SavedRecordingPath(string? AudioPath, string? TranscriptPath);
 }

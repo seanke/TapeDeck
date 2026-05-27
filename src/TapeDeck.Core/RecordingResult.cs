@@ -7,6 +7,7 @@ public sealed record RecordingResult(
     TapeDeckExitCode ExitCode,
     IReadOnlyList<MixdownResult> Outputs,
     TimeSpan Duration,
+    TranscriptResult? Transcript = null,
     string? ErrorMessage = null)
 {
     /// <summary>

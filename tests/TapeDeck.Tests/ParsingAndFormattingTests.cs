@@ -37,6 +37,18 @@ public sealed class ParsingAndFormattingTests
         Assert.False(CommandLineParser.TryParseGain(value, out _));
     }
 
+    [Fact]
+    public void TryParseCultureName_AcceptsKnownCulture()
+    {
+        Assert.True(CommandLineParser.TryParseCultureName("en-US"));
+    }
+
+    [Fact]
+    public void TryParseCultureName_RejectsUnknownCulture()
+    {
+        Assert.False(CommandLineParser.TryParseCultureName("not a culture"));
+    }
+
     [Theory]
     [InlineData("m4a", OutputFormat.M4A)]
     [InlineData("mp4a", OutputFormat.M4A)]
@@ -67,6 +79,35 @@ public sealed class ParsingAndFormattingTests
 
         Assert.False(parsed);
         Assert.Contains("--out extension", error);
+    }
+
+    [Fact]
+    public void TryParseRecordOptions_TranscriptOutEnablesTranscription()
+    {
+        var parsed = CommandLineParser.TryParseRecordOptions(["--transcript-out", @"C:\Recordings\meeting.txt"], out var options, out var error);
+
+        Assert.True(parsed, error);
+        Assert.True(options.Transcribe);
+        Assert.Equal(@"C:\Recordings\meeting.txt", options.TranscriptOutputPath);
+    }
+
+    [Fact]
+    public void TryParseRecordOptions_TranscriptCultureEnablesTranscription()
+    {
+        var parsed = CommandLineParser.TryParseRecordOptions(["--transcript-culture", "en-US"], out var options, out var error);
+
+        Assert.True(parsed, error);
+        Assert.True(options.Transcribe);
+        Assert.Equal("en-US", options.TranscriptCultureName);
+    }
+
+    [Fact]
+    public void TryParseRecordOptions_RejectsTranscriptWithSplit()
+    {
+        var parsed = CommandLineParser.TryParseRecordOptions(["--transcript", "--split-minutes", "60"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Contains("--split-minutes", error);
     }
 
     [Theory]

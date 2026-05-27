@@ -14,6 +14,7 @@ public sealed class MixdownService
     private const int FloatReadBlockSamples = 16_384;
     private const int ByteReadBlockSize = 64 * 1024;
     private static readonly WaveFormat FinalWaveFormat = new(OutputSampleRate, OutputBitsPerSample, OutputChannels);
+    private static readonly WaveFormat TranscriptWaveFormat = new(16_000, 16, 1);
 
     /// <summary>
     /// Performs a block-based two-pass mixdown.
@@ -29,6 +30,22 @@ public sealed class MixdownService
         var normalizationGain = CalculateNormalizationGain(peak);
         var results = WriteFinalFiles(request, normalizationGain);
         return Task.FromResult<IReadOnlyList<MixdownResult>>(results);
+    }
+
+    /// <summary>
+    /// Writes a mono 16 kHz PCM WAV suitable for the local Windows speech recognizer.
+    /// </summary>
+    public Task WriteTranscriptSourceWaveAsync(MixdownRequest request, string outputPath)
+    {
+        if (request.SystemStemPath is null && request.MicrophoneStemPath is null)
+        {
+            throw new InvalidOperationException("At least one source stem is required for transcript audio.");
+        }
+
+        var peak = FindPeak(request);
+        var normalizationGain = CalculateNormalizationGain(peak);
+        WriteTranscriptSourceWave(request, outputPath, normalizationGain);
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -92,6 +109,68 @@ public sealed class MixdownService
     {
         using var writer = new SplitM4AWriter(request, waveProvider);
         return writer.Complete();
+    }
+
+    private static void WriteTranscriptSourceWave(MixdownRequest request, string outputPath, double normalizationGain)
+    {
+        var partialPath = FileNameService.GetTranscriptSourcePartialWavePath(outputPath);
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+            if (!request.Overwrite && File.Exists(outputPath))
+            {
+                throw new FileOutputException($"The transcript source file already exists: {outputPath}");
+            }
+
+            if (File.Exists(partialPath))
+            {
+                if (!request.Overwrite)
+                {
+                    throw new FileOutputException($"The transcript source partial already exists: {partialPath}");
+                }
+
+                File.Delete(partialPath);
+            }
+
+            using var context = MixProviderContext.Create(request);
+            ISampleProvider sampleProvider = context.Provider;
+            if (normalizationGain != 1.0)
+            {
+                sampleProvider = new GainSampleProvider(sampleProvider, normalizationGain);
+            }
+
+            sampleProvider = new StereoToMonoSampleProvider(sampleProvider)
+            {
+                LeftVolume = 0.5f,
+                RightVolume = 0.5f
+            };
+
+            if (sampleProvider.WaveFormat.SampleRate != TranscriptWaveFormat.SampleRate)
+            {
+                sampleProvider = new WdlResamplingSampleProvider(sampleProvider, TranscriptWaveFormat.SampleRate);
+            }
+
+            var waveProvider = new SampleToWaveProvider16(sampleProvider);
+            var buffer = new byte[ByteReadBlockSize];
+            using (var writer = new WaveFileWriter(partialPath, waveProvider.WaveFormat))
+            {
+                int read;
+                while ((read = waveProvider.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    writer.Write(buffer, 0, read);
+                }
+            }
+
+            File.Move(partialPath, outputPath, request.Overwrite);
+        }
+        catch (FileOutputException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            throw new FileOutputException($"The transcript source WAV could not be written: {outputPath}", ex);
+        }
     }
 
     private sealed class MixProviderContext : IDisposable

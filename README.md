@@ -11,6 +11,7 @@ TapeDeck targets `net8.0-windows`, uses NAudio `2.3.0`, and does not require adm
 - Can target specific playback or microphone devices by ID or exact friendly name.
 - Writes M4A/AAC by default: 48,000 Hz, stereo, 128 kbps.
 - Can write uncompressed WAV with `--format wav`: 48,000 Hz, stereo, 16-bit PCM.
+- Can write a local TXT transcript with `--transcript`.
 - Preserves quiet gaps in the recording timeline.
 - Keeps memory usage stable by recording and mixing in blocks.
 - Includes optional WAV stems for troubleshooting with `--keep-stems`.
@@ -26,6 +27,7 @@ TapeDeck record
 TapeDeck record --out "C:\Recordings\meeting.m4a"
 TapeDeck record --duration 01:00:00
 TapeDeck record --format wav --out "C:\Recordings\meeting.wav"
+TapeDeck record --transcript
 TapeDeck record --system-device "<id>" --mic-device "<id>"
 TapeDeck record --no-mic
 TapeDeck record --no-system
@@ -54,9 +56,16 @@ TapeDeck record --system-gain 1.0
 TapeDeck record --mic-gain 1.0
 TapeDeck record --system-device "<id-or-exact-name>"
 TapeDeck record --mic-device "<id-or-exact-name>"
+TapeDeck record --transcript
+TapeDeck record --transcript-out "C:\Recordings\meeting.txt"
+TapeDeck record --transcript-culture en-US
 ```
 
 `--format` accepts `m4a`, `mp4a`, `aac`, `wav`, or `wave`. If `--format` is omitted, TapeDeck infers the format from a `.m4a` or `.wav` output path when possible.
+
+`--transcript` creates a TXT sidecar beside the audio file, for example `meeting.txt`. It uses installed Windows speech recognition locally through `System.Speech`; it does not call an online transcription service. Accuracy depends on the installed Windows speech recognizer and language pack. Use `--transcript-culture` to choose a specific installed recognizer culture.
+
+`--transcript` cannot currently be combined with `--split-minutes`.
 
 When `--split-minutes 60` is used with `meeting.m4a`, final files are written as:
 
@@ -82,7 +91,7 @@ Run the app with:
 dotnet run --project src/TapeDeck.App
 ```
 
-The app records the default system audio and microphone, lets you choose M4A or WAV, and prompts for the save location when recording stops.
+The app records the default system audio and microphone, lets you choose M4A or WAV, optionally creates a local TXT transcript, and prompts for the save location when recording stops.
 
 ## Practical Notes
 

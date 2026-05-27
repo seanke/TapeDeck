@@ -145,6 +145,9 @@ public static class Program
         writer.WriteLine("  --overwrite                 Overwrite existing final output paths.");
         writer.WriteLine("  --system-gain <number>      Linear gain for system audio. Default: 1.0.");
         writer.WriteLine("  --mic-gain <number>         Linear gain for microphone audio. Default: 1.0.");
+        writer.WriteLine("  --transcript                Write a local Windows speech-recognition TXT transcript.");
+        writer.WriteLine("  --transcript-out <path>     Transcript output path. Defaults beside the audio file.");
+        writer.WriteLine("  --transcript-culture <name> Installed recognizer culture such as en-US.");
     }
 
     private static void PrintDevicesHelp(TextWriter writer)

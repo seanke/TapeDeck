@@ -74,4 +74,35 @@ public sealed class FileNameServiceTests
     {
         Assert.Equal(expected, FileNameService.GetMixedPartialPath(finalPath));
     }
+
+    [Fact]
+    public void ResolveTranscriptPath_WhenNoPathIsSupplied_UsesFinalAudioBaseName()
+    {
+        using var directory = new TemporaryDirectory();
+        var finalPath = Path.Combine(directory.Path, "meeting.m4a");
+
+        var transcriptPath = FileNameService.ResolveTranscriptPath(null, finalPath, false);
+
+        Assert.Equal(Path.Combine(directory.Path, "meeting.txt"), transcriptPath);
+    }
+
+    [Fact]
+    public void ResolveTranscriptPath_WhenTranscriptExistsAndOverwriteIsFalse_AddsCollisionSuffix()
+    {
+        using var directory = new TemporaryDirectory();
+        var transcriptPath = Path.Combine(directory.Path, "meeting.txt");
+        File.WriteAllText(transcriptPath, "existing");
+
+        var resolved = FileNameService.ResolveTranscriptPath(transcriptPath, Path.Combine(directory.Path, "meeting.m4a"), false);
+
+        Assert.Equal(Path.Combine(directory.Path, "meeting.001.txt"), resolved);
+    }
+
+    [Fact]
+    public void GetTranscriptSourceWavePath_UsesFinalAudioBaseName()
+    {
+        var path = FileNameService.GetTranscriptSourceWavePath(@"C:\Recordings\meeting.m4a");
+
+        Assert.Equal(@"C:\Recordings\meeting.transcript-source.wav", path);
+    }
 }

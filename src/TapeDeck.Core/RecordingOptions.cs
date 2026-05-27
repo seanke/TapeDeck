@@ -71,6 +71,21 @@ public sealed record RecordingOptions
     /// Gets the target bitrate used for M4A/AAC output.
     /// </summary>
     public int AudioBitrate { get; init; } = 128_000;
+
+    /// <summary>
+    /// Gets a value indicating whether a local text transcript should be written after recording.
+    /// </summary>
+    public bool Transcribe { get; init; }
+
+    /// <summary>
+    /// Gets the optional transcript output path supplied by the caller.
+    /// </summary>
+    public string? TranscriptOutputPath { get; init; }
+
+    /// <summary>
+    /// Gets the optional installed Windows speech recognizer culture name.
+    /// </summary>
+    public string? TranscriptCultureName { get; init; }
 }
 
 /// <summary>
@@ -106,7 +121,10 @@ public enum TapeDeckExitCode
     RecordingFailed = 4,
 
     /// <summary>Final WAV mixing failed after source stems were preserved.</summary>
-    FinalMixFailed = 5
+    FinalMixFailed = 5,
+
+    /// <summary>Local transcript generation failed after the final audio was saved.</summary>
+    TranscriptionFailed = 6
 }
 
 /// <summary>
@@ -262,6 +280,34 @@ public static class CommandLineParser
                     options = options with { AudioBitrate = bitrate };
                     break;
 
+                case "--transcript":
+                    options = options with { Transcribe = true };
+                    break;
+
+                case "--transcript-out":
+                    if (!TryReadValue(args, ref i, arg, out var transcriptOutput, out error))
+                    {
+                        return false;
+                    }
+
+                    options = options with { Transcribe = true, TranscriptOutputPath = transcriptOutput };
+                    break;
+
+                case "--transcript-culture":
+                    if (!TryReadValue(args, ref i, arg, out var transcriptCulture, out error))
+                    {
+                        return false;
+                    }
+
+                    if (!TryParseCultureName(transcriptCulture))
+                    {
+                        error = $"Invalid --transcript-culture value '{transcriptCulture}'. Use a culture name such as en-US.";
+                        return false;
+                    }
+
+                    options = options with { Transcribe = true, TranscriptCultureName = transcriptCulture };
+                    break;
+
                 default:
                     error = $"Unknown option '{arg}'.";
                     return false;
@@ -271,6 +317,12 @@ public static class CommandLineParser
         if (!options.RecordSystem && !options.RecordMicrophone)
         {
             error = "At least one source must be enabled.";
+            return false;
+        }
+
+        if (options.Transcribe && options.SplitMinutes is not null)
+        {
+            error = "--transcript cannot currently be combined with --split-minutes.";
             return false;
         }
 
@@ -305,6 +357,22 @@ public static class CommandLineParser
         return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out gain)
             && double.IsFinite(gain)
             && gain >= 0;
+    }
+
+    /// <summary>
+    /// Returns true when the value is a valid culture name.
+    /// </summary>
+    public static bool TryParseCultureName(string value)
+    {
+        try
+        {
+            _ = CultureInfo.GetCultureInfo(value);
+            return true;
+        }
+        catch (CultureNotFoundException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
