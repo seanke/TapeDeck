@@ -46,6 +46,17 @@ public sealed class DualSourceRecorder
     public async Task<RecordingResult> RecordAsync(RecordingOptions options, CancellationToken cancellationToken)
     {
         var fileSet = FileNameService.CreateFileSet(options, DateTimeOffset.Now);
+        if (options.Transcribe)
+        {
+            var transcriptRequirements = transcriptService.CheckRequirements(options.TranscriptCultureName);
+            if (!transcriptRequirements.IsAvailable)
+            {
+                var message = transcriptRequirements.ToDisplayText();
+                error.WriteLine(message);
+                return new RecordingResult(TapeDeckExitCode.TranscriptionFailed, [], TimeSpan.Zero, ErrorMessage: message);
+            }
+        }
+
         var recorders = new List<SourceRecorder>();
         SourceRecorder? systemRecorder = null;
         SourceRecorder? microphoneRecorder = null;

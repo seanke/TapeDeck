@@ -62,7 +62,7 @@ TapeDeck record --format txt --transcript-culture en-US
 
 `--format` accepts `m4a`, `mp4a`, `aac`, `wav`, `wave`, `txt`, `text`, or `transcript`. If `--format` is omitted, TapeDeck infers the format from a `.m4a`, `.wav`, or `.txt` output path when possible.
 
-`--format txt` records the selected sources, mixes them into temporary speech-recognition audio, writes the transcript, and deletes the temporary audio when cleanup succeeds. It uses installed Windows speech recognition locally through `System.Speech`; it does not call an online transcription service. Accuracy depends on the installed Windows speech recognizer and language pack. Use `--transcript-culture` to choose a specific installed recognizer culture.
+`--format txt` records the selected sources, mixes them into temporary speech-recognition audio, writes the transcript, and deletes the temporary audio when cleanup succeeds. It uses installed Windows speech recognition locally through `System.Speech`; it does not call an online transcription service. TapeDeck checks for an installed, usable Windows speech recognizer before recording and prints setup instructions if TXT output is unavailable. Accuracy depends on the installed Windows speech recognizer and language pack. Use `--transcript-culture` to choose a specific installed recognizer culture.
 
 `--format txt` cannot currently be combined with `--split-minutes`.
 
@@ -90,7 +90,7 @@ Run the app with:
 dotnet run --project src/TapeDeck.App
 ```
 
-The app records the default system audio and microphone, lets you choose M4A, WAV, or TXT, and prompts for the save location when recording stops.
+The app records the default system audio and microphone, lets you choose M4A, WAV, or TXT, and prompts for the save location when recording stops. When TXT is selected, the app checks local speech-recognition requirements immediately and disables Record if the required Windows recognizer is not available.
 
 ## Practical Notes
 

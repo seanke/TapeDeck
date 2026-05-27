@@ -151,4 +151,14 @@ public sealed class ParsingAndFormattingTests
     {
         Assert.Equal(expected, ByteFormat.Format(bytes));
     }
+
+    [Fact]
+    public void TranscriptRequirementsResult_WhenUnavailable_IncludesSetupInstructions()
+    {
+        var result = TranscriptRequirementsResult.Unavailable("No recognizer.");
+
+        Assert.False(result.IsAvailable);
+        Assert.Contains("No recognizer.", result.ToDisplayText());
+        Assert.Contains("Windows Settings", result.ToDisplayText());
+    }
 }

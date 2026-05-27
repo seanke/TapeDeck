@@ -8,6 +8,7 @@ namespace TapeDeck.App;
 /// </summary>
 public sealed class MainForm : Form
 {
+    private readonly LocalTranscriptService transcriptService = new();
     private readonly ComboBox formatComboBox = new();
     private readonly NumericUpDown bitrateInput = new();
     private readonly CheckBox systemAudioCheckBox = new();
@@ -21,6 +22,7 @@ public sealed class MainForm : Form
 
     private CancellationTokenSource? recordingCancellation;
     private Task? recordingTask;
+    private TranscriptRequirementsResult? transcriptRequirements;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MainForm"/> class.
@@ -32,7 +34,7 @@ public sealed class MainForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = true;
-        ClientSize = new Size(380, 235);
+        ClientSize = new Size(460, 320);
 
         BuildLayout();
         WireEvents();
@@ -51,6 +53,13 @@ public sealed class MainForm : Form
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var formatLabel = new Label
         {
@@ -102,8 +111,10 @@ public sealed class MainForm : Form
         elapsedLabel.Anchor = AnchorStyles.Left;
 
         statusLabel.Text = "Ready";
-        statusLabel.AutoEllipsis = true;
+        statusLabel.AutoSize = false;
+        statusLabel.AutoEllipsis = false;
         statusLabel.Dock = DockStyle.Fill;
+        statusLabel.TextAlign = ContentAlignment.TopLeft;
 
         root.Controls.Add(formatLabel, 0, 0);
         root.Controls.Add(formatComboBox, 1, 0);
@@ -145,6 +156,11 @@ public sealed class MainForm : Form
         }
 
         var format = SelectedFormat;
+        if (!EnsureTranscriptRequirements())
+        {
+            return;
+        }
+
         var temporaryPath = CreateTemporaryOutputPath(format);
         var options = new RecordingOptions
         {
@@ -280,18 +296,49 @@ public sealed class MainForm : Form
 
     private void UpdateFormatControls()
     {
-        bitrateInput.Enabled = SelectedFormat == OutputFormat.M4A;
+        if (!IsRecording)
+        {
+            if (SelectedFormat == OutputFormat.Txt)
+            {
+                transcriptRequirements = transcriptService.CheckRequirements(null);
+                statusLabel.Text = transcriptRequirements.ToDisplayText();
+            }
+            else
+            {
+                transcriptRequirements = null;
+                statusLabel.Text = "Ready";
+            }
+        }
+
+        SetRecordingState(IsRecording);
     }
 
     private void SetRecordingState(bool recording)
     {
-        recordButton.Enabled = !recording;
+        recordButton.Enabled = !recording && CanRecordSelectedFormat;
         stopButton.Enabled = recording;
         formatComboBox.Enabled = !recording;
         bitrateInput.Enabled = !recording && SelectedFormat == OutputFormat.M4A;
         systemAudioCheckBox.Enabled = !recording;
         microphoneCheckBox.Enabled = !recording;
     }
+
+    private bool EnsureTranscriptRequirements()
+    {
+        if (SelectedFormat != OutputFormat.Txt)
+        {
+            return true;
+        }
+
+        transcriptRequirements = transcriptService.CheckRequirements(null);
+        statusLabel.Text = transcriptRequirements.ToDisplayText();
+        SetRecordingState(false);
+        return transcriptRequirements.IsAvailable;
+    }
+
+    private bool CanRecordSelectedFormat => SelectedFormat != OutputFormat.Txt || transcriptRequirements?.IsAvailable == true;
+
+    private bool IsRecording => recordingTask is not null && !recordingTask.IsCompleted;
 
     private OutputFormat SelectedFormat
     {

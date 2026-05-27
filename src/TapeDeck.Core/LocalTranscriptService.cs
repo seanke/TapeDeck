@@ -11,6 +11,37 @@ namespace TapeDeck;
 public sealed class LocalTranscriptService
 {
     /// <summary>
+    /// Checks whether the installed Windows speech recognizer needed for TXT output is present and usable.
+    /// </summary>
+    public TranscriptRequirementsResult CheckRequirements(string? cultureName)
+    {
+        try
+        {
+            var recognizerInfo = ResolveRecognizer(cultureName);
+            using var recognizer = new SpeechRecognitionEngine(recognizerInfo);
+            var grammar = new DictationGrammar();
+            recognizer.LoadGrammar(grammar);
+            recognizer.SetInputToNull();
+
+            return TranscriptRequirementsResult.Available(
+                recognizerInfo.Culture.Name,
+                recognizerInfo.Name);
+        }
+        catch (TranscriptionException ex)
+        {
+            return TranscriptRequirementsResult.Unavailable(ex.Message);
+        }
+        catch (CultureNotFoundException ex)
+        {
+            return TranscriptRequirementsResult.Unavailable($"Invalid transcript culture '{cultureName}': {ex.Message}");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or PlatformNotSupportedException or COMException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return TranscriptRequirementsResult.Unavailable("Local transcription could not be opened. Windows speech recognition is not available for the selected language.");
+        }
+    }
+
+    /// <summary>
     /// Transcribes a WAV file into a TXT file without calling an online transcription service.
     /// </summary>
     public TranscriptResult Transcribe(TranscriptRequest request)
@@ -138,6 +169,53 @@ public sealed record TranscriptResult(
     long SizeBytes,
     string CultureName,
     string RecognizerName);
+
+/// <summary>
+/// Describes whether local TXT transcript requirements are available.
+/// </summary>
+public sealed record TranscriptRequirementsResult(
+    bool IsAvailable,
+    string Message,
+    string Instructions,
+    string? CultureName = null,
+    string? RecognizerName = null)
+{
+    /// <summary>
+    /// Gets the user-facing setup instructions for local TXT transcript support.
+    /// </summary>
+    public const string SetupInstructions = "Install a Windows speech recognition language pack, then restart TapeDeck. In Windows Settings, open Time & language > Language & region, choose the language options for your preferred language, and install Speech recognition. Also check Time & language > Speech for the matching speech language.";
+
+    /// <summary>
+    /// Creates an available requirements result.
+    /// </summary>
+    public static TranscriptRequirementsResult Available(string cultureName, string recognizerName)
+    {
+        return new TranscriptRequirementsResult(
+            true,
+            $"TXT transcription ready: {recognizerName} ({cultureName}).",
+            string.Empty,
+            cultureName,
+            recognizerName);
+    }
+
+    /// <summary>
+    /// Creates an unavailable requirements result with setup instructions.
+    /// </summary>
+    public static TranscriptRequirementsResult Unavailable(string message)
+    {
+        return new TranscriptRequirementsResult(false, message, SetupInstructions);
+    }
+
+    /// <summary>
+    /// Formats the warning and setup instructions for console or app status output.
+    /// </summary>
+    public string ToDisplayText()
+    {
+        return IsAvailable || string.IsNullOrWhiteSpace(Instructions)
+            ? Message
+            : $"{Message} {Instructions}";
+    }
+}
 
 /// <summary>
 /// Raised when local transcript generation fails.
