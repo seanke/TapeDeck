@@ -1,6 +1,6 @@
 # TapeDeck
 
-TapeDeck is a small Windows-only recorder for capturing system playback audio, microphone audio, or both. It writes one mixed replayable audio file and is available as both a command-line tool and a tiny Windows desktop app.
+TapeDeck is a small Windows-only recorder for capturing system playback audio, microphone audio, or both. It writes a mixed replayable audio file or a local TXT transcript, and is available as both a command-line tool and a tiny Windows desktop app.
 
 TapeDeck targets `net8.0-windows`, uses NAudio `2.3.0`, and does not require admin rights.
 
@@ -11,6 +11,7 @@ TapeDeck targets `net8.0-windows`, uses NAudio `2.3.0`, and does not require adm
 - Can target specific playback or microphone devices by ID or exact friendly name.
 - Writes M4A/AAC by default: 48,000 Hz, stereo, 128 kbps.
 - Can write uncompressed WAV with `--format wav`: 48,000 Hz, stereo, 16-bit PCM.
+- Can write a local TXT transcript with `--format txt`.
 - Preserves quiet gaps in the recording timeline.
 - Keeps memory usage stable by recording and mixing in blocks.
 - Includes optional WAV stems for troubleshooting with `--keep-stems`.
@@ -26,6 +27,7 @@ TapeDeck record
 TapeDeck record --out "C:\Recordings\meeting.m4a"
 TapeDeck record --duration 01:00:00
 TapeDeck record --format wav --out "C:\Recordings\meeting.wav"
+TapeDeck record --format txt --out "C:\Recordings\meeting.txt"
 TapeDeck record --system-device "<id>" --mic-device "<id>"
 TapeDeck record --no-mic
 TapeDeck record --no-system
@@ -45,6 +47,7 @@ Use `TapeDeck devices` to list playback/render and microphone/capture devices. D
 ```text
 TapeDeck record --format m4a
 TapeDeck record --format wav
+TapeDeck record --format txt
 TapeDeck record --bitrate 128000
 TapeDeck record --duration 01:30:00
 TapeDeck record --split-minutes 60
@@ -54,9 +57,14 @@ TapeDeck record --system-gain 1.0
 TapeDeck record --mic-gain 1.0
 TapeDeck record --system-device "<id-or-exact-name>"
 TapeDeck record --mic-device "<id-or-exact-name>"
+TapeDeck record --format txt --transcript-culture en-US
 ```
 
-`--format` accepts `m4a`, `mp4a`, `aac`, `wav`, or `wave`. If `--format` is omitted, TapeDeck infers the format from a `.m4a` or `.wav` output path when possible.
+`--format` accepts `m4a`, `mp4a`, `aac`, `wav`, `wave`, `txt`, `text`, or `transcript`. If `--format` is omitted, TapeDeck infers the format from a `.m4a`, `.wav`, or `.txt` output path when possible.
+
+`--format txt` records the selected sources, mixes them into temporary speech-recognition audio, writes the transcript, and deletes the temporary audio when cleanup succeeds. It uses installed Windows speech recognition locally through `System.Speech`; it does not call an online transcription service. TapeDeck checks for an installed, usable Windows speech recognizer before recording and prints setup instructions if TXT output is unavailable. Accuracy depends on the installed Windows speech recognizer and language pack. Use `--transcript-culture` to choose a specific installed recognizer culture.
+
+`--format txt` cannot currently be combined with `--split-minutes`.
 
 When `--split-minutes 60` is used with `meeting.m4a`, final files are written as:
 
@@ -82,7 +90,7 @@ Run the app with:
 dotnet run --project src/TapeDeck.App
 ```
 
-The app records the default system audio and microphone, lets you choose M4A or WAV, and prompts for the save location when recording stops.
+The app records the default system audio and microphone, lets you choose M4A, WAV, or TXT, and prompts for the save location when recording stops. When TXT is selected, the app checks local speech-recognition requirements immediately and disables Record if the required Windows recognizer is not available.
 
 ## Practical Notes
 

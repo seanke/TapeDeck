@@ -82,6 +82,90 @@ public static class FileNameService
         return Path.Combine(directory, $"{name}.mixed.partial{extension}");
     }
 
+    /// <summary>
+    /// Resolves the final transcript text path, applying the same collision behavior as audio outputs.
+    /// </summary>
+    public static string ResolveTranscriptPath(string? requestedTranscriptPath, string finalBasePath, bool overwrite)
+    {
+        var requestedPath = string.IsNullOrWhiteSpace(requestedTranscriptPath)
+            ? Path.ChangeExtension(finalBasePath, ".txt")
+            : requestedTranscriptPath;
+
+        string fullPath;
+        try
+        {
+            fullPath = Path.GetFullPath(requestedPath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            throw new FileOutputException($"The transcript path is invalid: {requestedPath}", ex);
+        }
+
+        if (!string.Equals(Path.GetExtension(fullPath), ".txt", StringComparison.OrdinalIgnoreCase))
+        {
+            fullPath += ".txt";
+        }
+
+        var directory = Path.GetDirectoryName(fullPath);
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            throw new FileOutputException($"The transcript path is invalid: {requestedPath}");
+        }
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            throw new FileOutputException($"The transcript output directory could not be created: {directory}", ex);
+        }
+
+        if (overwrite)
+        {
+            return fullPath;
+        }
+
+        var candidate = fullPath;
+        var suffix = 1;
+        while (File.Exists(candidate) || File.Exists(GetTranscriptPartialPath(candidate)))
+        {
+            candidate = AddCollisionSuffix(fullPath, suffix++);
+        }
+
+        return candidate;
+    }
+
+    /// <summary>
+    /// Gets the temporary partial transcript path for a final transcript path.
+    /// </summary>
+    public static string GetTranscriptPartialPath(string transcriptPath)
+    {
+        var directory = Path.GetDirectoryName(transcriptPath) ?? string.Empty;
+        var name = Path.GetFileNameWithoutExtension(transcriptPath);
+        return Path.Combine(directory, $"{name}.partial.txt");
+    }
+
+    /// <summary>
+    /// Gets the temporary mixed WAV path used as local speech recognition input.
+    /// </summary>
+    public static string GetTranscriptSourceWavePath(string finalBasePath)
+    {
+        var directory = Path.GetDirectoryName(finalBasePath) ?? string.Empty;
+        var name = Path.GetFileNameWithoutExtension(finalBasePath);
+        return Path.Combine(directory, $"{name}.transcript-source.wav");
+    }
+
+    /// <summary>
+    /// Gets the partial path for the temporary mixed transcript-source WAV.
+    /// </summary>
+    public static string GetTranscriptSourcePartialWavePath(string transcriptSourcePath)
+    {
+        var directory = Path.GetDirectoryName(transcriptSourcePath) ?? string.Empty;
+        var name = Path.GetFileNameWithoutExtension(transcriptSourcePath);
+        return Path.Combine(directory, $"{name}.partial.wav");
+    }
+
     private static string ResolveFinalPath(string path, OutputFormat format, bool overwrite, bool split)
     {
         string fullPath;
@@ -144,6 +228,17 @@ public static class FileNameService
             return true;
         }
 
+        if (IsTxtPath(finalPath))
+        {
+            var transcriptSourcePath = GetTranscriptSourceWavePath(finalPath);
+            if (File.Exists(GetTranscriptPartialPath(finalPath))
+                || File.Exists(transcriptSourcePath)
+                || File.Exists(GetTranscriptSourcePartialWavePath(transcriptSourcePath)))
+            {
+                return true;
+            }
+        }
+
         var baseWithoutExtension = Path.Combine(
             Path.GetDirectoryName(finalPath) ?? string.Empty,
             Path.GetFileNameWithoutExtension(finalPath));
@@ -164,7 +259,18 @@ public static class FileNameService
 
     private static string GetExtension(OutputFormat format)
     {
-        return format == OutputFormat.Wav ? ".wav" : ".m4a";
+        return format switch
+        {
+            OutputFormat.Wav => ".wav",
+            OutputFormat.M4A => ".m4a",
+            OutputFormat.Txt => ".txt",
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format, null)
+        };
+    }
+
+    private static bool IsTxtPath(string path)
+    {
+        return string.Equals(Path.GetExtension(path), ".txt", StringComparison.OrdinalIgnoreCase);
     }
 }
 

@@ -23,6 +23,16 @@ public sealed class FileNameServiceTests
     }
 
     [Fact]
+    public void GetDefaultOutputPath_WhenTxtFormatIsRequested_UsesTxtExtension()
+    {
+        var localDate = new DateTime(2026, 5, 21, 14, 3, 2, DateTimeKind.Unspecified);
+        var localOffset = TimeZoneInfo.Local.GetUtcOffset(localDate);
+        var path = FileNameService.GetDefaultOutputPath(new DateTimeOffset(localDate, localOffset), OutputFormat.Txt);
+
+        Assert.EndsWith(Path.Combine("Recordings", "TapeDeck", "2026-05-21_14-03-02.txt"), path);
+    }
+
+    [Fact]
     public void CreateFileSet_WhenFinalExistsAndOverwriteIsFalse_AddsCollisionSuffix()
     {
         using var directory = new TemporaryDirectory();
@@ -73,5 +83,50 @@ public sealed class FileNameServiceTests
     public void GetMixedPartialPath_UsesFinalOutputExtension(string finalPath, string expected)
     {
         Assert.Equal(expected, FileNameService.GetMixedPartialPath(finalPath));
+    }
+
+    [Fact]
+    public void ResolveTranscriptPath_WhenNoPathIsSupplied_UsesFinalAudioBaseName()
+    {
+        using var directory = new TemporaryDirectory();
+        var finalPath = Path.Combine(directory.Path, "meeting.m4a");
+
+        var transcriptPath = FileNameService.ResolveTranscriptPath(null, finalPath, false);
+
+        Assert.Equal(Path.Combine(directory.Path, "meeting.txt"), transcriptPath);
+    }
+
+    [Fact]
+    public void ResolveTranscriptPath_WhenTranscriptExistsAndOverwriteIsFalse_AddsCollisionSuffix()
+    {
+        using var directory = new TemporaryDirectory();
+        var transcriptPath = Path.Combine(directory.Path, "meeting.txt");
+        File.WriteAllText(transcriptPath, "existing");
+
+        var resolved = FileNameService.ResolveTranscriptPath(transcriptPath, Path.Combine(directory.Path, "meeting.m4a"), false);
+
+        Assert.Equal(Path.Combine(directory.Path, "meeting.001.txt"), resolved);
+    }
+
+    [Fact]
+    public void CreateFileSet_WhenTxtPartialExistsAndOverwriteIsFalse_AddsCollisionSuffix()
+    {
+        using var directory = new TemporaryDirectory();
+        var partialPath = Path.Combine(directory.Path, "meeting.partial.txt");
+        File.WriteAllText(partialPath, "existing");
+
+        var fileSet = FileNameService.CreateFileSet(
+            new RecordingOptions { OutputPath = Path.Combine(directory.Path, "meeting.txt"), Format = OutputFormat.Txt },
+            DateTimeOffset.Now);
+
+        Assert.Equal(Path.Combine(directory.Path, "meeting.001.txt"), fileSet.FinalBasePath);
+    }
+
+    [Fact]
+    public void GetTranscriptSourceWavePath_UsesFinalAudioBaseName()
+    {
+        var path = FileNameService.GetTranscriptSourceWavePath(@"C:\Recordings\meeting.m4a");
+
+        Assert.Equal(@"C:\Recordings\meeting.transcript-source.wav", path);
     }
 }

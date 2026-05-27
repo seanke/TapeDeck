@@ -8,6 +8,7 @@ namespace TapeDeck.App;
 /// </summary>
 public sealed class MainForm : Form
 {
+    private readonly LocalTranscriptService transcriptService = new();
     private readonly ComboBox formatComboBox = new();
     private readonly NumericUpDown bitrateInput = new();
     private readonly CheckBox systemAudioCheckBox = new();
@@ -21,6 +22,7 @@ public sealed class MainForm : Form
 
     private CancellationTokenSource? recordingCancellation;
     private Task? recordingTask;
+    private TranscriptRequirementsResult? transcriptRequirements;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MainForm"/> class.
@@ -32,7 +34,7 @@ public sealed class MainForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = true;
-        ClientSize = new Size(360, 230);
+        ClientSize = new Size(460, 320);
 
         BuildLayout();
         WireEvents();
@@ -51,6 +53,13 @@ public sealed class MainForm : Form
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var formatLabel = new Label
         {
@@ -62,6 +71,7 @@ public sealed class MainForm : Form
         formatComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
         formatComboBox.Items.Add(new FormatItem("M4A", OutputFormat.M4A));
         formatComboBox.Items.Add(new FormatItem("WAV", OutputFormat.Wav));
+        formatComboBox.Items.Add(new FormatItem("TXT", OutputFormat.Txt));
         formatComboBox.SelectedIndex = 0;
         formatComboBox.Dock = DockStyle.Fill;
 
@@ -101,8 +111,10 @@ public sealed class MainForm : Form
         elapsedLabel.Anchor = AnchorStyles.Left;
 
         statusLabel.Text = "Ready";
-        statusLabel.AutoEllipsis = true;
+        statusLabel.AutoSize = false;
+        statusLabel.AutoEllipsis = false;
         statusLabel.Dock = DockStyle.Fill;
+        statusLabel.TextAlign = ContentAlignment.TopLeft;
 
         root.Controls.Add(formatLabel, 0, 0);
         root.Controls.Add(formatComboBox, 1, 0);
@@ -144,6 +156,11 @@ public sealed class MainForm : Form
         }
 
         var format = SelectedFormat;
+        if (!EnsureTranscriptRequirements())
+        {
+            return;
+        }
+
         var temporaryPath = CreateTemporaryOutputPath(format);
         var options = new RecordingOptions
         {
@@ -152,7 +169,8 @@ public sealed class MainForm : Form
             AudioBitrate = (int)bitrateInput.Value,
             RecordSystem = systemAudioCheckBox.Checked,
             RecordMicrophone = microphoneCheckBox.Checked,
-            Overwrite = true
+            Overwrite = true,
+            Transcribe = format == OutputFormat.Txt
         };
 
         recordingCancellation = new CancellationTokenSource();
@@ -178,14 +196,24 @@ public sealed class MainForm : Form
 
             if (!result.Succeeded)
             {
-                statusLabel.Text = result.ErrorMessage ?? $"Recording failed: {result.ExitCode}";
+                if (result.Outputs.Count > 0)
+                {
+                    var saved = PromptAndMoveOutput(result.Outputs[0].Path, options.Format, result.Transcript?.Path);
+                    statusLabel.Text = saved.AudioPath is null
+                        ? $"Transcript failed. Audio kept at {result.Outputs[0].Path}"
+                        : $"Saved audio. Transcript failed: {result.ErrorMessage}";
+                }
+                else
+                {
+                    statusLabel.Text = result.ErrorMessage ?? $"Recording failed: {result.ExitCode}";
+                }
+
                 return;
             }
 
-            var savedPath = PromptAndMoveOutput(result.Outputs[0].Path, options.Format);
-            statusLabel.Text = savedPath is null
-                ? $"Save canceled. Kept at {result.Outputs[0].Path}"
-                : $"Saved {savedPath}";
+            var temporaryAudioPath = result.Outputs.Count > 0 ? result.Outputs[0].Path : null;
+            var savedPath = PromptAndMoveOutput(temporaryAudioPath, options.Format, result.Transcript?.Path);
+            statusLabel.Text = GetSavedStatus(savedPath, temporaryAudioPath, result.Transcript?.Path);
         }
         catch (AudioDeviceException ex)
         {
@@ -220,45 +248,97 @@ public sealed class MainForm : Form
         recordingCancellation.Cancel();
     }
 
-    private string? PromptAndMoveOutput(string temporaryPath, OutputFormat format)
+    private SavedRecordingPath PromptAndMoveOutput(string? temporaryPath, OutputFormat format, string? transcriptPath)
     {
         using var dialog = new SaveFileDialog
         {
             AddExtension = true,
-            DefaultExt = format == OutputFormat.Wav ? "wav" : "m4a",
+            DefaultExt = GetDefaultExtension(format),
             FileName = Path.GetFileName(FileNameService.GetDefaultOutputPath(DateTimeOffset.Now, format)),
-            Filter = format == OutputFormat.Wav
-                ? "WAV audio (*.wav)|*.wav"
-                : "M4A audio (*.m4a)|*.m4a",
+            Filter = GetSaveDialogFilter(format),
             InitialDirectory = GetDefaultRecordingDirectory(),
             OverwritePrompt = true,
-            Title = "Save recording"
+            Title = format == OutputFormat.Txt ? "Save transcript" : "Save recording"
         };
 
         if (dialog.ShowDialog(this) != DialogResult.OK)
         {
-            return null;
+            return new SavedRecordingPath(null, null);
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(dialog.FileName)!);
+        if (format == OutputFormat.Txt)
+        {
+            if (string.IsNullOrWhiteSpace(transcriptPath) || !File.Exists(transcriptPath))
+            {
+                return new SavedRecordingPath(null, null);
+            }
+
+            File.Move(transcriptPath, dialog.FileName, true);
+            return new SavedRecordingPath(null, dialog.FileName);
+        }
+
+        if (string.IsNullOrWhiteSpace(temporaryPath) || !File.Exists(temporaryPath))
+        {
+            return new SavedRecordingPath(null, null);
+        }
+
         File.Move(temporaryPath, dialog.FileName, true);
-        return dialog.FileName;
+        string? movedTranscriptPath = null;
+        if (!string.IsNullOrWhiteSpace(transcriptPath) && File.Exists(transcriptPath))
+        {
+            movedTranscriptPath = Path.ChangeExtension(dialog.FileName, ".txt");
+            File.Move(transcriptPath, movedTranscriptPath, true);
+        }
+
+        return new SavedRecordingPath(dialog.FileName, movedTranscriptPath);
     }
 
     private void UpdateFormatControls()
     {
-        bitrateInput.Enabled = SelectedFormat == OutputFormat.M4A;
+        if (!IsRecording)
+        {
+            if (SelectedFormat == OutputFormat.Txt)
+            {
+                transcriptRequirements = transcriptService.CheckRequirements(null);
+                statusLabel.Text = transcriptRequirements.ToDisplayText();
+            }
+            else
+            {
+                transcriptRequirements = null;
+                statusLabel.Text = "Ready";
+            }
+        }
+
+        SetRecordingState(IsRecording);
     }
 
     private void SetRecordingState(bool recording)
     {
-        recordButton.Enabled = !recording;
+        recordButton.Enabled = !recording && CanRecordSelectedFormat;
         stopButton.Enabled = recording;
         formatComboBox.Enabled = !recording;
         bitrateInput.Enabled = !recording && SelectedFormat == OutputFormat.M4A;
         systemAudioCheckBox.Enabled = !recording;
         microphoneCheckBox.Enabled = !recording;
     }
+
+    private bool EnsureTranscriptRequirements()
+    {
+        if (SelectedFormat != OutputFormat.Txt)
+        {
+            return true;
+        }
+
+        transcriptRequirements = transcriptService.CheckRequirements(null);
+        statusLabel.Text = transcriptRequirements.ToDisplayText();
+        SetRecordingState(false);
+        return transcriptRequirements.IsAvailable;
+    }
+
+    private bool CanRecordSelectedFormat => SelectedFormat != OutputFormat.Txt || transcriptRequirements?.IsAvailable == true;
+
+    private bool IsRecording => recordingTask is not null && !recordingTask.IsCompleted;
 
     private OutputFormat SelectedFormat
     {
@@ -274,8 +354,60 @@ public sealed class MainForm : Form
     {
         var directory = Path.Combine(Path.GetTempPath(), "TapeDeck");
         Directory.CreateDirectory(directory);
-        var extension = format == OutputFormat.Wav ? ".wav" : ".m4a";
+        var extension = format switch
+        {
+            OutputFormat.Wav => ".wav",
+            OutputFormat.M4A => ".m4a",
+            OutputFormat.Txt => ".txt",
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format, null)
+        };
+
         return Path.Combine(directory, $"tapedeck-{DateTimeOffset.Now.LocalDateTime:yyyy-MM-dd_HH-mm-ss}{extension}");
+    }
+
+    private static string GetSavedStatus(SavedRecordingPath savedPath, string? temporaryAudioPath, string? temporaryTranscriptPath)
+    {
+        if (savedPath.AudioPath is not null && savedPath.TranscriptPath is not null)
+        {
+            return $"Saved {savedPath.AudioPath} and transcript";
+        }
+
+        if (savedPath.AudioPath is not null)
+        {
+            return $"Saved {savedPath.AudioPath}";
+        }
+
+        if (savedPath.TranscriptPath is not null)
+        {
+            return $"Saved {savedPath.TranscriptPath}";
+        }
+
+        var keptPath = temporaryAudioPath ?? temporaryTranscriptPath;
+        return keptPath is null
+            ? "Save canceled."
+            : $"Save canceled. Kept at {keptPath}";
+    }
+
+    private static string GetDefaultExtension(OutputFormat format)
+    {
+        return format switch
+        {
+            OutputFormat.Wav => "wav",
+            OutputFormat.M4A => "m4a",
+            OutputFormat.Txt => "txt",
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format, null)
+        };
+    }
+
+    private static string GetSaveDialogFilter(OutputFormat format)
+    {
+        return format switch
+        {
+            OutputFormat.Wav => "WAV audio (*.wav)|*.wav",
+            OutputFormat.M4A => "M4A audio (*.m4a)|*.m4a",
+            OutputFormat.Txt => "Transcript (*.txt)|*.txt",
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format, null)
+        };
     }
 
     private static string GetDefaultRecordingDirectory()
@@ -312,4 +444,6 @@ public sealed class MainForm : Form
             return Label;
         }
     }
+
+    private sealed record SavedRecordingPath(string? AudioPath, string? TranscriptPath);
 }

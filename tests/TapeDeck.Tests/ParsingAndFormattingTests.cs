@@ -37,12 +37,27 @@ public sealed class ParsingAndFormattingTests
         Assert.False(CommandLineParser.TryParseGain(value, out _));
     }
 
+    [Fact]
+    public void TryParseCultureName_AcceptsKnownCulture()
+    {
+        Assert.True(CommandLineParser.TryParseCultureName("en-US"));
+    }
+
+    [Fact]
+    public void TryParseCultureName_RejectsUnknownCulture()
+    {
+        Assert.False(CommandLineParser.TryParseCultureName("not a culture"));
+    }
+
     [Theory]
     [InlineData("m4a", OutputFormat.M4A)]
     [InlineData("mp4a", OutputFormat.M4A)]
     [InlineData("aac", OutputFormat.M4A)]
     [InlineData("wav", OutputFormat.Wav)]
     [InlineData("wave", OutputFormat.Wav)]
+    [InlineData("txt", OutputFormat.Txt)]
+    [InlineData("text", OutputFormat.Txt)]
+    [InlineData("transcript", OutputFormat.Txt)]
     public void TryParseOutputFormat_AcceptsSupportedValues(string value, OutputFormat expected)
     {
         var parsed = CommandLineParser.TryParseOutputFormat(value, out var format);
@@ -61,12 +76,70 @@ public sealed class ParsingAndFormattingTests
     }
 
     [Fact]
+    public void TryParseRecordOptions_InferTxtFormatFromOutputExtension()
+    {
+        var parsed = CommandLineParser.TryParseRecordOptions(["--out", @"C:\Recordings\meeting.txt"], out var options, out var error);
+
+        Assert.True(parsed, error);
+        Assert.Equal(OutputFormat.Txt, options.Format);
+        Assert.True(options.Transcribe);
+    }
+
+    [Fact]
+    public void TryParseRecordOptions_TxtFormatEnablesTranscription()
+    {
+        var parsed = CommandLineParser.TryParseRecordOptions(["--format", "txt"], out var options, out var error);
+
+        Assert.True(parsed, error);
+        Assert.Equal(OutputFormat.Txt, options.Format);
+        Assert.True(options.Transcribe);
+    }
+
+    [Fact]
     public void TryParseRecordOptions_RejectsExplicitFormatExtensionMismatch()
     {
         var parsed = CommandLineParser.TryParseRecordOptions(["--format", "m4a", "--out", @"C:\Recordings\meeting.wav"], out _, out var error);
 
         Assert.False(parsed);
         Assert.Contains("--out extension", error);
+    }
+
+    [Fact]
+    public void TryParseRecordOptions_TranscriptOutEnablesTranscription()
+    {
+        var parsed = CommandLineParser.TryParseRecordOptions(["--transcript-out", @"C:\Recordings\meeting.txt"], out var options, out var error);
+
+        Assert.True(parsed, error);
+        Assert.True(options.Transcribe);
+        Assert.Equal(@"C:\Recordings\meeting.txt", options.TranscriptOutputPath);
+    }
+
+    [Fact]
+    public void TryParseRecordOptions_TranscriptCultureEnablesTranscription()
+    {
+        var parsed = CommandLineParser.TryParseRecordOptions(["--transcript-culture", "en-US"], out var options, out var error);
+
+        Assert.True(parsed, error);
+        Assert.True(options.Transcribe);
+        Assert.Equal("en-US", options.TranscriptCultureName);
+    }
+
+    [Fact]
+    public void TryParseRecordOptions_RejectsTranscriptWithSplit()
+    {
+        var parsed = CommandLineParser.TryParseRecordOptions(["--transcript", "--split-minutes", "60"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Contains("--split-minutes", error);
+    }
+
+    [Fact]
+    public void TryParseRecordOptions_RejectsTxtFormatWithSplit()
+    {
+        var parsed = CommandLineParser.TryParseRecordOptions(["--format", "txt", "--split-minutes", "60"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Contains("--format txt", error);
     }
 
     [Theory]
@@ -77,5 +150,15 @@ public sealed class ParsingAndFormattingTests
     public void ByteFormat_FormatsBinaryUnits(long bytes, string expected)
     {
         Assert.Equal(expected, ByteFormat.Format(bytes));
+    }
+
+    [Fact]
+    public void TranscriptRequirementsResult_WhenUnavailable_IncludesSetupInstructions()
+    {
+        var result = TranscriptRequirementsResult.Unavailable("No recognizer.");
+
+        Assert.False(result.IsAvailable);
+        Assert.Contains("No recognizer.", result.ToDisplayText());
+        Assert.Contains("Windows Settings", result.ToDisplayText());
     }
 }
