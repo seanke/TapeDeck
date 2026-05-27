@@ -183,8 +183,6 @@ public sealed class DualSourceRecorder
             return new RecordingResult(TapeDeckExitCode.RecordingFailed, [], stopElapsed, ErrorMessage: message);
         }
 
-        output.WriteLine(options.Format == OutputFormat.Wav ? "Mixing final WAV..." : "Mixing final M4A...");
-        IReadOnlyList<MixdownResult> results;
         var mixdownRequest = new MixdownRequest(
             options.RecordSystem ? fileSet.SystemStemPath : null,
             options.RecordMicrophone ? fileSet.MicrophoneStemPath : null,
@@ -195,6 +193,41 @@ public sealed class DualSourceRecorder
             options.AudioBitrate,
             options.SplitMinutes,
             options.Overwrite);
+
+        if (options.IsTranscriptOnly)
+        {
+            output.WriteLine("Transcribing TXT locally...");
+            try
+            {
+                var textOnlyTranscript = await TranscribeAsync(options, fileSet.FinalBasePath, mixdownRequest).ConfigureAwait(false);
+                if (!options.KeepStems)
+                {
+                    DeleteStemIfExists(fileSet.SystemStemPath);
+                    DeleteStemIfExists(fileSet.MicrophoneStemPath);
+                }
+
+                output.WriteLine($"Saved: {textOnlyTranscript.Path}");
+                output.WriteLine($"Transcript recognizer: {textOnlyTranscript.RecognizerName} ({textOnlyTranscript.CultureName})");
+                output.WriteLine($"Duration: {stopElapsed:hh\\:mm\\:ss}");
+                output.WriteLine($"Size: {ByteFormat.Format(textOnlyTranscript.SizeBytes)}");
+
+                if (sizeWarningPrinted)
+                {
+                    output.WriteLine("Warning: recording stopped at the safe WAV size limit.");
+                }
+
+                return new RecordingResult(TapeDeckExitCode.Success, [], stopElapsed, textOnlyTranscript);
+            }
+            catch (Exception ex)
+            {
+                error.WriteLine($"Local transcription failed: {ex.Message}");
+                PrintStemPaths(recorders);
+                return new RecordingResult(TapeDeckExitCode.TranscriptionFailed, [], stopElapsed, ErrorMessage: ex.Message);
+            }
+        }
+
+        output.WriteLine(options.Format == OutputFormat.Wav ? "Mixing final WAV..." : "Mixing final M4A...");
+        IReadOnlyList<MixdownResult> results;
 
         try
         {
@@ -322,9 +355,13 @@ public sealed class DualSourceRecorder
 
     private static string FormatFinalOutput(RecordingOptions options)
     {
-        return options.Format == OutputFormat.Wav
-            ? "48000 Hz, stereo, 16-bit PCM WAV"
-            : $"48000 Hz, stereo, AAC M4A, {options.AudioBitrate / 1000} kbps";
+        return options.Format switch
+        {
+            OutputFormat.Wav => "48000 Hz, stereo, 16-bit PCM WAV",
+            OutputFormat.M4A => $"48000 Hz, stereo, AAC M4A, {options.AudioBitrate / 1000} kbps",
+            OutputFormat.Txt => "TXT transcript, generated locally from mixed recording audio",
+            _ => throw new ArgumentOutOfRangeException(nameof(options), options.Format, null)
+        };
     }
 
     private void PrintStemPaths(IEnumerable<SourceRecorder> recorders)

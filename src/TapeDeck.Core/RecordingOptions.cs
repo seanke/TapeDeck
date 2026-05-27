@@ -86,6 +86,11 @@ public sealed record RecordingOptions
     /// Gets the optional installed Windows speech recognizer culture name.
     /// </summary>
     public string? TranscriptCultureName { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether the requested final output is a TXT transcript rather than audio.
+    /// </summary>
+    public bool IsTranscriptOnly => Format == OutputFormat.Txt;
 }
 
 /// <summary>
@@ -97,7 +102,10 @@ public enum OutputFormat
     Wav,
 
     /// <summary>AAC audio in an M4A/MP4 container.</summary>
-    M4A
+    M4A,
+
+    /// <summary>Plain text transcript generated locally from the mixed recording.</summary>
+    Txt
 }
 
 /// <summary>
@@ -163,11 +171,11 @@ public static class CommandLineParser
 
                     if (!TryParseOutputFormat(formatValue, out var format))
                     {
-                        error = $"Invalid --format value '{formatValue}'. Use m4a or wav.";
+                        error = $"Invalid --format value '{formatValue}'. Use m4a, wav, or txt.";
                         return false;
                     }
 
-                    options = options with { Format = format };
+                    options = options with { Format = format, Transcribe = format == OutputFormat.Txt || options.Transcribe };
                     formatWasSpecified = true;
                     break;
 
@@ -320,15 +328,17 @@ public static class CommandLineParser
             return false;
         }
 
-        if (options.Transcribe && options.SplitMinutes is not null)
-        {
-            error = "--transcript cannot currently be combined with --split-minutes.";
-            return false;
-        }
-
         if (!formatWasSpecified && TryInferOutputFormat(options.OutputPath, out var inferredFormat))
         {
-            options = options with { Format = inferredFormat };
+            options = options with { Format = inferredFormat, Transcribe = inferredFormat == OutputFormat.Txt || options.Transcribe };
+        }
+
+        if (options.Transcribe && options.SplitMinutes is not null)
+        {
+            error = options.IsTranscriptOnly
+                ? "--format txt cannot currently be combined with --split-minutes."
+                : "--transcript cannot currently be combined with --split-minutes.";
+            return false;
         }
 
         if (formatWasSpecified && !OutputPathMatchesFormat(options.OutputPath, options.Format))
@@ -391,6 +401,11 @@ public static class CommandLineParser
             case "aac":
                 format = OutputFormat.M4A;
                 return true;
+            case "txt":
+            case "text":
+            case "transcript":
+                format = OutputFormat.Txt;
+                return true;
             default:
                 format = default;
                 return false;
@@ -439,6 +454,12 @@ public static class CommandLineParser
             return true;
         }
 
+        if (string.Equals(extension, ".txt", StringComparison.OrdinalIgnoreCase))
+        {
+            format = OutputFormat.Txt;
+            return true;
+        }
+
         return false;
     }
 
@@ -460,12 +481,24 @@ public static class CommandLineParser
 
     private static string GetExtension(OutputFormat format)
     {
-        return format == OutputFormat.Wav ? ".wav" : ".m4a";
+        return format switch
+        {
+            OutputFormat.Wav => ".wav",
+            OutputFormat.M4A => ".m4a",
+            OutputFormat.Txt => ".txt",
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format, null)
+        };
     }
 
     private static string GetFormatName(OutputFormat format)
     {
-        return format == OutputFormat.Wav ? "wav" : "m4a";
+        return format switch
+        {
+            OutputFormat.Wav => "wav",
+            OutputFormat.M4A => "m4a",
+            OutputFormat.Txt => "txt",
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format, null)
+        };
     }
 }
 

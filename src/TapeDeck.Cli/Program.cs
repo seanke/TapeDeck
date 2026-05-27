@@ -120,7 +120,7 @@ public static class Program
         writer.WriteLine("  TapeDeck devices");
         writer.WriteLine();
         writer.WriteLine("Commands:");
-        writer.WriteLine("  record   Record system playback and/or microphone audio to a mixed M4A or WAV file.");
+        writer.WriteLine("  record   Record system playback and/or microphone audio to M4A, WAV, or TXT transcript output.");
         writer.WriteLine("  devices  List playback/render and microphone/capture devices.");
     }
 
@@ -133,7 +133,7 @@ public static class Program
         writer.WriteLine();
         writer.WriteLine("Options:");
         writer.WriteLine("  --out <path>                Final output path.");
-        writer.WriteLine("  --format <m4a|wav>          Final output format. Aliases: mp4a, wave. Default: m4a.");
+        writer.WriteLine("  --format <m4a|wav|txt>      Final output format. Aliases: mp4a, wave, text. Default: m4a.");
         writer.WriteLine("  --bitrate <bps>             M4A/AAC bitrate in bits per second. Default: 128000.");
         writer.WriteLine("  --no-mic                    Disable microphone capture.");
         writer.WriteLine("  --no-system                 Disable system playback capture.");
@@ -145,7 +145,7 @@ public static class Program
         writer.WriteLine("  --overwrite                 Overwrite existing final output paths.");
         writer.WriteLine("  --system-gain <number>      Linear gain for system audio. Default: 1.0.");
         writer.WriteLine("  --mic-gain <number>         Linear gain for microphone audio. Default: 1.0.");
-        writer.WriteLine("  --transcript                Write a local Windows speech-recognition TXT transcript.");
+        writer.WriteLine("  --transcript                Also write a local Windows speech-recognition TXT sidecar.");
         writer.WriteLine("  --transcript-out <path>     Transcript output path. Defaults beside the audio file.");
         writer.WriteLine("  --transcript-culture <name> Installed recognizer culture such as en-US.");
     }

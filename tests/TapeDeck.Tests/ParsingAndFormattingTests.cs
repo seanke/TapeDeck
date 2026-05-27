@@ -55,6 +55,9 @@ public sealed class ParsingAndFormattingTests
     [InlineData("aac", OutputFormat.M4A)]
     [InlineData("wav", OutputFormat.Wav)]
     [InlineData("wave", OutputFormat.Wav)]
+    [InlineData("txt", OutputFormat.Txt)]
+    [InlineData("text", OutputFormat.Txt)]
+    [InlineData("transcript", OutputFormat.Txt)]
     public void TryParseOutputFormat_AcceptsSupportedValues(string value, OutputFormat expected)
     {
         var parsed = CommandLineParser.TryParseOutputFormat(value, out var format);
@@ -70,6 +73,26 @@ public sealed class ParsingAndFormattingTests
 
         Assert.True(parsed, error);
         Assert.Equal(OutputFormat.Wav, options.Format);
+    }
+
+    [Fact]
+    public void TryParseRecordOptions_InferTxtFormatFromOutputExtension()
+    {
+        var parsed = CommandLineParser.TryParseRecordOptions(["--out", @"C:\Recordings\meeting.txt"], out var options, out var error);
+
+        Assert.True(parsed, error);
+        Assert.Equal(OutputFormat.Txt, options.Format);
+        Assert.True(options.Transcribe);
+    }
+
+    [Fact]
+    public void TryParseRecordOptions_TxtFormatEnablesTranscription()
+    {
+        var parsed = CommandLineParser.TryParseRecordOptions(["--format", "txt"], out var options, out var error);
+
+        Assert.True(parsed, error);
+        Assert.Equal(OutputFormat.Txt, options.Format);
+        Assert.True(options.Transcribe);
     }
 
     [Fact]
@@ -108,6 +131,15 @@ public sealed class ParsingAndFormattingTests
 
         Assert.False(parsed);
         Assert.Contains("--split-minutes", error);
+    }
+
+    [Fact]
+    public void TryParseRecordOptions_RejectsTxtFormatWithSplit()
+    {
+        var parsed = CommandLineParser.TryParseRecordOptions(["--format", "txt", "--split-minutes", "60"], out _, out var error);
+
+        Assert.False(parsed);
+        Assert.Contains("--format txt", error);
     }
 
     [Theory]

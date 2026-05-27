@@ -86,9 +86,13 @@ public sealed class MixdownService
         }
 
         var waveProvider = new SampleToWaveProvider16(sampleProvider);
-        return request.Format == OutputFormat.Wav
-            ? WriteWaveFiles(request, waveProvider)
-            : WriteM4AFiles(request, waveProvider);
+        return request.Format switch
+        {
+            OutputFormat.Wav => WriteWaveFiles(request, waveProvider),
+            OutputFormat.M4A => WriteM4AFiles(request, waveProvider),
+            OutputFormat.Txt => throw new InvalidOperationException("TXT output is written by the local transcription workflow, not final audio mixdown."),
+            _ => throw new ArgumentOutOfRangeException(nameof(request), request.Format, null)
+        };
     }
 
     private static IReadOnlyList<MixdownResult> WriteWaveFiles(MixdownRequest request, IWaveProvider waveProvider)

@@ -228,6 +228,17 @@ public static class FileNameService
             return true;
         }
 
+        if (IsTxtPath(finalPath))
+        {
+            var transcriptSourcePath = GetTranscriptSourceWavePath(finalPath);
+            if (File.Exists(GetTranscriptPartialPath(finalPath))
+                || File.Exists(transcriptSourcePath)
+                || File.Exists(GetTranscriptSourcePartialWavePath(transcriptSourcePath)))
+            {
+                return true;
+            }
+        }
+
         var baseWithoutExtension = Path.Combine(
             Path.GetDirectoryName(finalPath) ?? string.Empty,
             Path.GetFileNameWithoutExtension(finalPath));
@@ -248,7 +259,18 @@ public static class FileNameService
 
     private static string GetExtension(OutputFormat format)
     {
-        return format == OutputFormat.Wav ? ".wav" : ".m4a";
+        return format switch
+        {
+            OutputFormat.Wav => ".wav",
+            OutputFormat.M4A => ".m4a",
+            OutputFormat.Txt => ".txt",
+            _ => throw new ArgumentOutOfRangeException(nameof(format), format, null)
+        };
+    }
+
+    private static bool IsTxtPath(string path)
+    {
+        return string.Equals(Path.GetExtension(path), ".txt", StringComparison.OrdinalIgnoreCase);
     }
 }
 
