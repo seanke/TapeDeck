@@ -46,7 +46,7 @@ public sealed class LocalTranscriptService
         }
         catch (Exception ex) when (ex is InvalidOperationException or PlatformNotSupportedException or COMException or UnauthorizedAccessException or NotSupportedException or IOException or ArgumentException)
         {
-            return TranscriptRequirementsResult.Unavailable("Local transcription self-test failed. Windows speech recognition is not available for the selected language.");
+            return TranscriptRequirementsResult.Unavailable($"Local transcription self-test failed: {DescribeException(ex)}");
         }
         finally
         {
@@ -196,6 +196,12 @@ public sealed class LocalTranscriptService
         {
             // A leftover temp probe is harmless and should not hide the actual requirement result.
         }
+    }
+
+    private static string DescribeException(Exception exception)
+    {
+        var relevantException = exception.InnerException ?? exception;
+        return relevantException.Message;
     }
 }
 
